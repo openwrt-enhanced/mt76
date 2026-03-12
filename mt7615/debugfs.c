@@ -2,6 +2,250 @@
 
 #include "mt7615.h"
 
+/* rate_tries: TX retries per MCS before stepping down (1-31, default 11).
+ * Lower values make the rate controller step down faster on a bad link. */
+static int mt7615_rate_tries_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.rate_tries = clamp_t(u8, val, 1, 31);
+	mt76_hw(dev)->max_rate_tries = dev->phy.rate_tries;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->rate_tries = dev->phy.rate_tries;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_rate_tries_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.rate_tries ? dev->phy.rate_tries : 11;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_rate_tries, mt7615_rate_tries_get,
+			 mt7615_rate_tries_set, "%llu\n");
+
+/* mcs_floor: minimum MCS index the rate controller can select (0-9).
+ * Prevents the rate controller from locking to the slowest rate. */
+static int mt7615_mcs_floor_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.mcs_floor = clamp_t(u8, val, 0, 9);
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->mcs_floor = dev->phy.mcs_floor;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_mcs_floor_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.mcs_floor;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_mcs_floor, mt7615_mcs_floor_get,
+			 mt7615_mcs_floor_set, "%llu\n");
+
+/* ampdu_density: minimum gap between AMPDUs (0-7).
+ * 0=none 1=1/4us 2=1/2us 3=1us 4=2us 5=4us 6=8us 7=16us */
+static int mt7615_ampdu_density_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.ampdu_density = clamp_t(u8, val, 0, 7);
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->ampdu_density = dev->phy.ampdu_density;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_ampdu_density_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.ampdu_density;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_ampdu_density, mt7615_ampdu_density_get,
+			 mt7615_ampdu_density_set, "%llu\n");
+
+/* coverage_class: ACK timeout extension ~3us per unit (0-31, default 0). */
+static int mt7615_coverage_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.coverage_class = clamp_t(s16, val, 0, 31);
+	mt7615_mac_set_timing(&dev->phy);
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->coverage_class = dev->phy.coverage_class;
+		mt7615_mac_set_timing(phy2);
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_coverage_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.coverage_class;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_coverage, mt7615_coverage_get,
+			 mt7615_coverage_set, "%llu\n");
+
+/* noack: force NO-ACK on all TX frames. */
+static int mt7615_noack_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.noack_en = !!val;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->noack_en = !!val;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_noack_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.noack_en;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_noack, mt7615_noack_get,
+			 mt7615_noack_set, "%llu\n");
+
+/* ofdm_sensitivity: CCA OFDM threshold dBm (-110 to -60, default -98).
+ * Raise to ignore weak neighboring APs. */
+static int mt7615_ofdm_sensitivity_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+	s8 sens = clamp_t(s8, (s64)val, -110, -60);
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.ofdm_sensitivity = sens;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->ofdm_sensitivity = sens;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_ofdm_sensitivity_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = (u64)(s64)dev->phy.ofdm_sensitivity;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_ofdm_sensitivity, mt7615_ofdm_sensitivity_get,
+			 mt7615_ofdm_sensitivity_set, "%lld\n");
+
+/* cck_sensitivity: CCA CCK threshold dBm (-120 to -60, default -110). */
+static int mt7615_cck_sensitivity_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+	s8 sens = clamp_t(s8, (s64)val, -120, -60);
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.cck_sensitivity = sens;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->cck_sensitivity = sens;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_cck_sensitivity_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = (u64)(s64)dev->phy.cck_sensitivity;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_cck_sensitivity, mt7615_cck_sensitivity_get,
+			 mt7615_cck_sensitivity_set, "%lld\n");
+
+/* slottime: 802.11 slot time 9us (short) or 20us (long). */
+static int mt7615_slottime_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	if (val != 9 && val != 20)
+		return -EINVAL;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.slottime = val;
+	mt7615_mac_set_timing(&dev->phy);
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->slottime = val;
+		mt7615_mac_set_timing(phy2);
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_slottime_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.slottime ? dev->phy.slottime : 9;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_slottime, mt7615_slottime_get,
+			 mt7615_slottime_set, "%llu\n");
+
+/* rts_thresh: RTS/CTS threshold bytes (256-2347, default 2347=disabled). */
+static int mt7615_rts_thresh_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	mt76_hw(dev)->wiphy->rts_threshold = val;
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_rts_thresh_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = mt76_hw(dev)->wiphy->rts_threshold;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_rts_thresh, mt7615_rts_thresh_get,
+			 mt7615_rts_thresh_set, "%llu\n");
+
+/* mib_stats: read-only interference and error counters. */
+static int mt7615_mib_stats_show(struct seq_file *s, void *data)
+{
+	struct mt7615_dev *dev = s->private;
+	struct mib_stats *mib = &dev->phy.mib;
+
+	seq_printf(s, "ack_fail:\t%u\n",	mib->ack_fail_cnt);
+	seq_printf(s, "fcs_err:\t%u\n",	mib->fcs_err_cnt);
+	seq_printf(s, "rts_cnt:\t%u\n",	mib->rts_cnt);
+	seq_printf(s, "rts_retries:\t%u\n",	mib->rts_retries_cnt);
+	seq_printf(s, "ba_miss:\t%u\n",	mib->ba_miss_cnt);
+	seq_printf(s, "ofdm_sensitivity:\t%d dBm\n", dev->phy.ofdm_sensitivity);
+	seq_printf(s, "cck_sensitivity:\t%d dBm\n",  dev->phy.cck_sensitivity);
+	seq_printf(s, "noise:\t\t%d dBm\n",	dev->phy.noise);
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(mt7615_mib_stats);
+
 static int
 mt7615_reg_set(void *data, u64 val)
 {
@@ -565,6 +809,17 @@ int mt7615_init_debugfs(struct mt7615_dev *dev)
 	debugfs_create_file("scs", 0600, dir, dev, &fops_scs);
 	debugfs_create_file("dbdc", 0600, dir, dev, &fops_dbdc);
 	debugfs_create_file("fw_debug", 0600, dir, dev, &fops_fw_debug);
+	debugfs_create_file("fw_debug", 0600, dir, dev, &fops_fw_debug);
+	debugfs_create_file("rate_tries", 0600, dir, dev, &fops_rate_tries);
+	debugfs_create_file("mcs_floor", 0600, dir, dev, &fops_mcs_floor);
+	debugfs_create_file("ampdu_density", 0600, dir, dev, &fops_ampdu_density);
+	debugfs_create_file("coverage_class", 0600, dir, dev, &fops_coverage);
+	debugfs_create_file("noack", 0600, dir, dev, &fops_noack);
+	debugfs_create_file("ofdm_sensitivity", 0600, dir, dev, &fops_ofdm_sensitivity);
+	debugfs_create_file("cck_sensitivity", 0600, dir, dev, &fops_cck_sensitivity);
+	debugfs_create_file("slottime", 0600, dir, dev, &fops_slottime);
+	debugfs_create_file("rts_thresh", 0600, dir, dev, &fops_rts_thresh);
+	debugfs_create_file("mib_stats", 0400, dir, dev, &mt7615_mib_stats_fops);
 	debugfs_create_file("runtime-pm", 0600, dir, dev, &fops_pm);
 	debugfs_create_file("idle-timeout", 0600, dir, dev,
 			    &fops_pm_idle_timeout);
