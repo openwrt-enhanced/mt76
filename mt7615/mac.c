@@ -671,8 +671,17 @@ mt7615_mac_tx_rate_val(struct mt7615_dev *dev,
 		else if (rate->flags & IEEE80211_TX_RC_160_MHZ_WIDTH)
 			*bw = 3;
 	} else if (rate->flags & IEEE80211_TX_RC_MCS) {
+		struct mt7615_phy *phy_priv = mphy->priv;
+
 		rate_idx = rate->idx;
-		nss = 1 + (rate->idx >> 3);
+		/* Enforce mcs_floor to prevent rate controller locking to lowest MCS */
+		if (phy_priv && phy_priv->mcs_floor) {
+			u8 mcs = rate_idx & 7;
+			u8 stream = rate_idx & ~7;
+			if (mcs < phy_priv->mcs_floor)
+				rate_idx = stream | phy_priv->mcs_floor;
+		}
+		nss = 1 + (rate_idx >> 3);
 		phy = MT_PHY_TYPE_HT;
 		if (rate->flags & IEEE80211_TX_RC_GREEN_FIELD)
 			phy = MT_PHY_TYPE_HT_GF;
@@ -735,8 +744,12 @@ int mt7615_mac_write_txwi(struct mt7615_dev *dev, __le32 *txwi,
 
 	if (sta) {
 		struct mt7615_sta *msta = (struct mt7615_sta *)sta->drv_priv;
+		struct mt7615_phy *phy_priv = mphy->priv;
 
 		tx_count = msta->rate_count;
+		/* Override retry count from debugfs */
+		if (phy_priv && phy_priv->rate_tries)
+			tx_count = phy_priv->rate_tries;
 	}
 
 	if (phy_idx && dev->mt76.phys[MT_BAND1])
@@ -852,9 +865,10 @@ int mt7615_mac_write_txwi(struct mt7615_dev *dev, __le32 *txwi,
 
 	txwi[3] |= cpu_to_le32(val);
 
-	if (info->flags & IEEE80211_TX_CTL_NO_ACK)
+	if ((info->flags & IEEE80211_TX_CTL_NO_ACK) ||
+	    (mphy->priv && ((struct mt7615_phy *)mphy->priv)->noack_en))
 		txwi[3] |= cpu_to_le32(MT_TXD3_NO_ACK);
-
+	
 	val = FIELD_PREP(MT_TXD7_TYPE, fc_type) |
 	      FIELD_PREP(MT_TXD7_SUB_TYPE, fc_stype) |
 	      FIELD_PREP(MT_TXD7_SPE_IDX, 0x18);
