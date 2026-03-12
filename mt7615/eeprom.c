@@ -165,6 +165,16 @@ static void mt7615_eeprom_parse_hw_cap(struct mt7615_dev *dev)
 	if (!tx_mask || tx_mask > max_nss)
 		tx_mask = max_nss;
 
+	if (dev->mt76.dev->of_node) {
+		u32 dt_chains;
+		if (!of_property_read_u32(dev->mt76.dev->of_node,
+					  "antenna-mask", &dt_chains)) {
+			u8 dt_mask = hweight32(dt_chains);
+			if (dt_mask > 0 && dt_mask < tx_mask)
+				tx_mask = dt_mask;
+		}
+	}
+
 	dev->chainmask = BIT(tx_mask) - 1;
 	dev->mphy.antenna_mask = dev->chainmask;
 	dev->mphy.chainmask = dev->chainmask;
