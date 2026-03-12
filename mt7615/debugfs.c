@@ -136,10 +136,14 @@ static int mt7615_ofdm_sensitivity_set(void *data, u64 val)
 	s8 sens = clamp_t(s8, (s64)val, -110, -60);
 
 	mt7615_mutex_acquire(dev);
+	mt7615_mac_set_scs(&dev->phy, false);
 	dev->phy.ofdm_sensitivity = sens;
+	mt7615_mac_set_sensitivity(&dev->phy, sens, true);
 	if (dev->mt76.phys[MT_BAND1]) {
 		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		mt7615_mac_set_scs(phy2, false);
 		phy2->ofdm_sensitivity = sens;
+		mt7615_mac_set_sensitivity(phy2, sens, true);
 	}
 	mt7615_mutex_release(dev);
 	return 0;
@@ -161,10 +165,14 @@ static int mt7615_cck_sensitivity_set(void *data, u64 val)
 	s8 sens = clamp_t(s8, (s64)val, -120, -60);
 
 	mt7615_mutex_acquire(dev);
+	mt7615_mac_set_scs(&dev->phy, false);
 	dev->phy.cck_sensitivity = sens;
+	mt7615_mac_set_sensitivity(&dev->phy, sens, false);
 	if (dev->mt76.phys[MT_BAND1]) {
 		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		mt7615_mac_set_scs(phy2, false);
 		phy2->cck_sensitivity = sens;
+		mt7615_mac_set_sensitivity(phy2, sens, false);
 	}
 	mt7615_mutex_release(dev);
 	return 0;
@@ -480,30 +488,6 @@ static int mt7615_rx_stbc_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(fops_rx_stbc, mt7615_rx_stbc_get,
 			 mt7615_rx_stbc_set, "%llu\n");
 
-/* ed_threshold: energy detection CCA threshold dBm (-82 to -62, default -82) */
-static int mt7615_ed_threshold_set(void *data, u64 val)
-{
-	struct mt7615_dev *dev = data;
-
-	mt7615_mutex_acquire(dev);
-	dev->phy.ed_threshold = clamp_t(s8, (s64)val, -82, -62);
-	if (dev->mt76.phys[MT_BAND1]) {
-		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
-		phy2->ed_threshold = dev->phy.ed_threshold;
-	}
-	mt7615_mutex_release(dev);
-	return 0;
-}
-
-static int mt7615_ed_threshold_get(void *data, u64 *val)
-{
-	struct mt7615_dev *dev = data;
-	*val = (u64)(s64)dev->phy.ed_threshold;
-	return 0;
-}
-DEFINE_DEBUGFS_ATTRIBUTE(fops_ed_threshold, mt7615_ed_threshold_get,
-			 mt7615_ed_threshold_set, "%lld\n");
-
 /* obss_enable: toggle OBSS protection */
 static int mt7615_obss_enable_set(void *data, u64 val)
 {
@@ -527,6 +511,29 @@ static int mt7615_obss_enable_get(void *data, u64 *val)
 }
 DEFINE_DEBUGFS_ATTRIBUTE(fops_obss_enable, mt7615_obss_enable_get,
 			 mt7615_obss_enable_set, "%llu\n");
+
+/* scs_enable: toggle automatic CCA sensitivity adjustment.
+ * Automatically disabled when ofdm/cck sensitivity is manually set. */
+static int mt7615_scs_enable_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mac_set_scs(&dev->phy, !!val);
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		mt7615_mac_set_scs(phy2, !!val);
+	}
+	return 0;
+}
+
+static int mt7615_scs_enable_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.scs_en;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_scs_enable, mt7615_scs_enable_get,
+			 mt7615_scs_enable_set, "%llu\n");
 
 static int
 mt7615_reg_set(void *data, u64 val)
@@ -1110,8 +1117,8 @@ int mt7615_init_debugfs(struct mt7615_dev *dev)
 	debugfs_create_file("force_mcs", 0600, dir, dev, &fops_force_mcs);
 	debugfs_create_file("force_nss", 0600, dir, dev, &fops_force_nss);
 	debugfs_create_file("force_bw", 0600, dir, dev, &fops_force_bw);
+	debugfs_create_file("scs_enable", 0600, dir, dev, &fops_scs_enable);
 	debugfs_create_file("rx_stbc", 0600, dir, dev, &fops_rx_stbc);
-	debugfs_create_file("ed_threshold", 0600, dir, dev, &fops_ed_threshold);
 	debugfs_create_file("obss_enable", 0600, dir, dev, &fops_obss_enable);
 	debugfs_create_file("runtime-pm", 0600, dir, dev, &fops_pm);
 	debugfs_create_file("idle-timeout", 0600, dir, dev,
