@@ -176,6 +176,11 @@ struct mt7615_phy {
 	s16 coverage_class;
 	u8 slottime;
 
+    u8 rate_tries;
+	u8 mcs_floor;
+	u8 ampdu_density;
+	bool noack_en;
+
 	u8 chfreq;
 	u8 rdd_state;
 
