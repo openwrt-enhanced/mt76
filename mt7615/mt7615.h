@@ -192,7 +192,7 @@ struct mt7615_phy {
 	s8 force_nss;
 	s8 force_bw;
     
-	bool rx_stbc_disable;
+	bool rx_stbc;
 	bool obss_en;
 
 	u8 chfreq;
