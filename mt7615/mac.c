@@ -661,32 +661,66 @@ mt7615_mac_tx_rate_val(struct mt7615_dev *dev,
 	*bw = 0;
 
 	if (rate->flags & IEEE80211_TX_RC_VHT_MCS) {
+		struct mt7615_phy *phy_priv = mphy->priv;
+
 		rate_idx = ieee80211_rate_get_vht_mcs(rate);
 		nss = ieee80211_rate_get_vht_nss(rate);
 		phy = MT_PHY_TYPE_VHT;
-		if (rate->flags & IEEE80211_TX_RC_40_MHZ_WIDTH)
-			*bw = 1;
-		else if (rate->flags & IEEE80211_TX_RC_80_MHZ_WIDTH)
-			*bw = 2;
-		else if (rate->flags & IEEE80211_TX_RC_160_MHZ_WIDTH)
-			*bw = 3;
+
+		/* force_mcs/nss/bw override for VHT */
+		if (phy_priv && phy_priv->force_mcs >= 0)
+			rate_idx = (u8)phy_priv->force_mcs;
+		if (phy_priv && phy_priv->force_nss > 0)
+			nss = phy_priv->force_nss;
+
+		if (phy_priv && phy_priv->force_bw > 0) {
+			if (phy_priv->force_bw >= 80)
+				*bw = 2;
+			else if (phy_priv->force_bw >= 40)
+				*bw = 1;
+			else
+				*bw = 0;
+		} else {
+			if (rate->flags & IEEE80211_TX_RC_40_MHZ_WIDTH)
+				*bw = 1;
+			else if (rate->flags & IEEE80211_TX_RC_80_MHZ_WIDTH)
+				*bw = 2;
+			else if (rate->flags & IEEE80211_TX_RC_160_MHZ_WIDTH)
+				*bw = 3;
+		}
 	} else if (rate->flags & IEEE80211_TX_RC_MCS) {
 		struct mt7615_phy *phy_priv = mphy->priv;
 
 		rate_idx = rate->idx;
-		/* Enforce mcs_floor to prevent rate controller locking to lowest MCS */
-		if (phy_priv && phy_priv->mcs_floor) {
+		/* force_mcs overrides rate controller */
+		if (phy_priv && phy_priv->force_mcs >= 0) {
+			u8 stream = rate_idx & ~7;
+			rate_idx = stream | (u8)phy_priv->force_mcs;
+		} else if (phy_priv && phy_priv->mcs_floor) {
+			/* enforce minimum MCS */
 			u8 mcs = rate_idx & 7;
 			u8 stream = rate_idx & ~7;
 			if (mcs < phy_priv->mcs_floor)
 				rate_idx = stream | phy_priv->mcs_floor;
 		}
 		nss = 1 + (rate_idx >> 3);
+		/* force_nss overrides spatial streams */
+		if (phy_priv && phy_priv->force_nss > 0)
+			nss = phy_priv->force_nss;
 		phy = MT_PHY_TYPE_HT;
 		if (rate->flags & IEEE80211_TX_RC_GREEN_FIELD)
 			phy = MT_PHY_TYPE_HT_GF;
 		if (rate->flags & IEEE80211_TX_RC_40_MHZ_WIDTH)
 			*bw = 1;
+		/* force_bw overrides bandwidth */
+		if (phy_priv && phy_priv->force_bw > 0) {
+			if (phy_priv->force_bw >= 80)
+				*bw = 2;
+			else if (phy_priv->force_bw >= 40)
+				*bw = 1;
+			else
+				*bw = 0;
+		}
 	} else {
 		const struct ieee80211_rate *r;
 		int band = mphy->chandef.chan->band;
@@ -802,7 +836,8 @@ int mt7615_mac_write_txwi(struct mt7615_dev *dev, __le32 *txwi,
 	}
 	txwi[2] = cpu_to_le32(val);
 
-	if (!(info->flags & IEEE80211_TX_CTL_AMPDU))
+	if (!(info->flags & IEEE80211_TX_CTL_AMPDU) ||
+	    (mphy->priv && !((struct mt7615_phy *)mphy->priv)->ampdu_en))
 		txwi[2] |= cpu_to_le32(MT_TXD2_BA_DISABLE);
 
 	txwi[4] = 0;
