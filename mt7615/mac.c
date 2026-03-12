@@ -566,7 +566,8 @@ static int mt7615_mac_fill_rx(struct mt7615_dev *dev, struct sk_buff *skb)
 		if (rxdg0 & MT_RXV1_HT_AD_CODE)
 			status->enc_flags |= RX_ENC_FLAG_LDPC;
 
-		status->enc_flags |= RX_ENC_FLAG_STBC_MASK * stbc;
+		if (!mphy->priv || ((struct mt7615_phy *)mphy->priv)->rx_stbc)
+		    status->enc_flags |= RX_ENC_FLAG_STBC_MASK * stbc;
 
 		status->chains = mphy->antenna_mask;
 		status->chain_signal[0] = to_rssi(MT_RXV4_RCPI0, rxdg3);
