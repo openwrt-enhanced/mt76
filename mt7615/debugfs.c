@@ -246,6 +246,288 @@ static int mt7615_mib_stats_show(struct seq_file *s, void *data)
 }
 DEFINE_SHOW_ATTRIBUTE(mt7615_mib_stats);
 
+/* amsdu_enable: toggle AMSDU aggregation (default on) */
+static int mt7615_amsdu_enable_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.amsdu_en = !!val;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->amsdu_en = !!val;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_amsdu_enable_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.amsdu_en;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_amsdu_enable, mt7615_amsdu_enable_get,
+			 mt7615_amsdu_enable_set, "%llu\n");
+
+/* ampdu_enable: toggle AMPDU aggregation (default on) */
+static int mt7615_ampdu_enable_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.ampdu_en = !!val;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->ampdu_en = !!val;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_ampdu_enable_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.ampdu_en;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_ampdu_enable, mt7615_ampdu_enable_get,
+			 mt7615_ampdu_enable_set, "%llu\n");
+
+/* ampdu_limit: max frames per AMPDU burst (1-64, default 64) */
+static int mt7615_ampdu_limit_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.ampdu_limit = clamp_t(u8, val, 1, 64);
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->ampdu_limit = dev->phy.ampdu_limit;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_ampdu_limit_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.ampdu_limit ? dev->phy.ampdu_limit : 64;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_ampdu_limit, mt7615_ampdu_limit_get,
+			 mt7615_ampdu_limit_set, "%llu\n");
+
+/* max_amsdu_len: maximum AMSDU frame size in bytes (0=disable, 3839, 7935) */
+static int mt7615_max_amsdu_len_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+	u16 len;
+
+	if (val == 0)
+		len = 0;
+	else if (val <= 3839)
+		len = 3839;
+	else
+		len = 7935;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.max_amsdu_len = len;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->max_amsdu_len = len;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_max_amsdu_len_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.max_amsdu_len;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_max_amsdu_len, mt7615_max_amsdu_len_get,
+			 mt7615_max_amsdu_len_set, "%llu\n");
+
+/* tx_sw_amsdu: toggle software AMSDU aggregation */
+static int mt7615_tx_sw_amsdu_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.tx_sw_amsdu = !!val;
+	if (!!val)
+		dev->mt76.hw->max_tx_aggregation_subframes = 64;
+	else
+		dev->mt76.hw->max_tx_aggregation_subframes = 1;
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_tx_sw_amsdu_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.tx_sw_amsdu;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_tx_sw_amsdu, mt7615_tx_sw_amsdu_get,
+			 mt7615_tx_sw_amsdu_set, "%llu\n");
+
+/* force_mcs: force all TX to specific MCS (-1=disabled, 0-9) */
+static int mt7615_force_mcs_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.force_mcs = clamp_t(s8, (s64)val, -1, 9);
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->force_mcs = dev->phy.force_mcs;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_force_mcs_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = (u64)(s64)dev->phy.force_mcs;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_force_mcs, mt7615_force_mcs_get,
+			 mt7615_force_mcs_set, "%lld\n");
+
+/* force_nss: force spatial stream count (-1=disabled, 1-3) */
+static int mt7615_force_nss_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.force_nss = clamp_t(s8, (s64)val, -1, 3);
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->force_nss = dev->phy.force_nss;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_force_nss_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = (u64)(s64)dev->phy.force_nss;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_force_nss, mt7615_force_nss_get,
+			 mt7615_force_nss_set, "%lld\n");
+
+/* force_bw: force bandwidth (-1=disabled, 20, 40, 80) */
+static int mt7615_force_bw_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+	s8 bw;
+
+	if ((s64)val == -1)
+		bw = -1;
+	else if (val <= 20)
+		bw = 20;
+	else if (val <= 40)
+		bw = 40;
+	else
+		bw = 80;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.force_bw = bw;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->force_bw = bw;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_force_bw_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = (u64)(s64)dev->phy.force_bw;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_force_bw, mt7615_force_bw_get,
+			 mt7615_force_bw_set, "%lld\n");
+
+/* rx_stbc: toggle RX STBC support */
+static int mt7615_rx_stbc_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.rx_stbc = !!val;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->rx_stbc = !!val;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_rx_stbc_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.rx_stbc;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_rx_stbc, mt7615_rx_stbc_get,
+			 mt7615_rx_stbc_set, "%llu\n");
+
+/* ed_threshold: energy detection CCA threshold dBm (-82 to -62, default -82) */
+static int mt7615_ed_threshold_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.ed_threshold = clamp_t(s8, (s64)val, -82, -62);
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->ed_threshold = dev->phy.ed_threshold;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_ed_threshold_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = (u64)(s64)dev->phy.ed_threshold;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_ed_threshold, mt7615_ed_threshold_get,
+			 mt7615_ed_threshold_set, "%lld\n");
+
+/* obss_enable: toggle OBSS protection */
+static int mt7615_obss_enable_set(void *data, u64 val)
+{
+	struct mt7615_dev *dev = data;
+
+	mt7615_mutex_acquire(dev);
+	dev->phy.obss_en = !!val;
+	if (dev->mt76.phys[MT_BAND1]) {
+		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
+		phy2->obss_en = !!val;
+	}
+	mt7615_mutex_release(dev);
+	return 0;
+}
+
+static int mt7615_obss_enable_get(void *data, u64 *val)
+{
+	struct mt7615_dev *dev = data;
+	*val = dev->phy.obss_en;
+	return 0;
+}
+DEFINE_DEBUGFS_ATTRIBUTE(fops_obss_enable, mt7615_obss_enable_get,
+			 mt7615_obss_enable_set, "%llu\n");
+
 static int
 mt7615_reg_set(void *data, u64 val)
 {
@@ -820,6 +1102,17 @@ int mt7615_init_debugfs(struct mt7615_dev *dev)
 	debugfs_create_file("slottime", 0600, dir, dev, &fops_slottime);
 	debugfs_create_file("rts_thresh", 0600, dir, dev, &fops_rts_thresh);
 	debugfs_create_file("mib_stats", 0400, dir, dev, &mt7615_mib_stats_fops);
+	debugfs_create_file("amsdu_enable", 0600, dir, dev, &fops_amsdu_enable);
+	debugfs_create_file("ampdu_enable", 0600, dir, dev, &fops_ampdu_enable);
+	debugfs_create_file("ampdu_limit", 0600, dir, dev, &fops_ampdu_limit);
+	debugfs_create_file("max_amsdu_len", 0600, dir, dev, &fops_max_amsdu_len);
+	debugfs_create_file("tx_sw_amsdu", 0600, dir, dev, &fops_tx_sw_amsdu);
+	debugfs_create_file("force_mcs", 0600, dir, dev, &fops_force_mcs);
+	debugfs_create_file("force_nss", 0600, dir, dev, &fops_force_nss);
+	debugfs_create_file("force_bw", 0600, dir, dev, &fops_force_bw);
+	debugfs_create_file("rx_stbc", 0600, dir, dev, &fops_rx_stbc);
+	debugfs_create_file("ed_threshold", 0600, dir, dev, &fops_ed_threshold);
+	debugfs_create_file("obss_enable", 0600, dir, dev, &fops_obss_enable);
 	debugfs_create_file("runtime-pm", 0600, dir, dev, &fops_pm);
 	debugfs_create_file("idle-timeout", 0600, dir, dev,
 			    &fops_pm_idle_timeout);
