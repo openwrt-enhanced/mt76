@@ -181,18 +181,18 @@ struct mt7615_phy {
 	u8 ampdu_density;
 	bool noack_en;
     
-	bool amsdu_en;
 	bool ampdu_en;
+	bool tx_sw_amsdu;
+	/* TODO: hook into MCU station commands */
+	bool amsdu_en;
 	u8 ampdu_limit;
 	u16 max_amsdu_len;
-	bool tx_sw_amsdu;
 
 	s8 force_mcs;
 	s8 force_nss;
 	s8 force_bw;
-
-	bool rx_stbc;
-	s8 ed_threshold;
+    
+	bool rx_stbc_disable;
 	bool obss_en;
 
 	u8 chfreq;
