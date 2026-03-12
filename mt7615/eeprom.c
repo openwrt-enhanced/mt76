@@ -178,6 +178,18 @@ static void mt7615_eeprom_parse_hw_cap(struct mt7615_dev *dev)
 	dev->chainmask = BIT(tx_mask) - 1;
 	dev->mphy.antenna_mask = dev->chainmask;
 	dev->mphy.chainmask = dev->chainmask;
+
+	if (dev->mt76.dev->of_node) {
+		s32 pwr_adjust = 0;
+		if (!of_property_read_s32(dev->mt76.dev->of_node,
+					  "tx-power-adjust", &pwr_adjust)) {
+			pwr_adjust = clamp_t(s32, pwr_adjust, -40, 40);
+			dev->mphy.txpower_cur += pwr_adjust / 2;
+			dev_info(dev->mt76.dev,
+				 "mt7615: tx-power-adjust %+d units applied\n",
+				 pwr_adjust);
+		}
+	}
 }
 
 static int mt7663_eeprom_get_target_power_index(struct mt7615_dev *dev,
