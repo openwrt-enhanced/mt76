@@ -180,6 +180,20 @@ struct mt7615_phy {
 	u8 mcs_floor;
 	u8 ampdu_density;
 	bool noack_en;
+    
+	bool amsdu_en;
+	bool ampdu_en;
+	u8 ampdu_limit;
+	u16 max_amsdu_len;
+	bool tx_sw_amsdu;
+
+	s8 force_mcs;
+	s8 force_nss;
+	s8 force_bw;
+
+	bool rx_stbc;
+	s8 ed_threshold;
+	bool obss_en;
 
 	u8 chfreq;
 	u8 rdd_state;
