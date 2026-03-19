@@ -138,12 +138,10 @@ static int mt7615_ofdm_sensitivity_set(void *data, u64 val)
 	mt7615_mutex_acquire(dev);
 	mt7615_mac_set_scs(&dev->phy, false);
 	dev->phy.ofdm_sensitivity = sens;
-	mt7615_mac_set_sensitivity(&dev->phy, sens, true);
 	if (dev->mt76.phys[MT_BAND1]) {
 		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
 		mt7615_mac_set_scs(phy2, false);
 		phy2->ofdm_sensitivity = sens;
-		mt7615_mac_set_sensitivity(phy2, sens, true);
 	}
 	mt7615_mutex_release(dev);
 	return 0;
@@ -158,7 +156,6 @@ static int mt7615_ofdm_sensitivity_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(fops_ofdm_sensitivity, mt7615_ofdm_sensitivity_get,
 			 mt7615_ofdm_sensitivity_set, "%lld\n");
 
-/* cck_sensitivity: CCA CCK threshold dBm (-120 to -60, default -110). */
 static int mt7615_cck_sensitivity_set(void *data, u64 val)
 {
 	struct mt7615_dev *dev = data;
@@ -167,12 +164,10 @@ static int mt7615_cck_sensitivity_set(void *data, u64 val)
 	mt7615_mutex_acquire(dev);
 	mt7615_mac_set_scs(&dev->phy, false);
 	dev->phy.cck_sensitivity = sens;
-	mt7615_mac_set_sensitivity(&dev->phy, sens, false);
 	if (dev->mt76.phys[MT_BAND1]) {
 		struct mt7615_phy *phy2 = dev->mt76.phys[MT_BAND1]->priv;
 		mt7615_mac_set_scs(phy2, false);
 		phy2->cck_sensitivity = sens;
-		mt7615_mac_set_sensitivity(phy2, sens, false);
 	}
 	mt7615_mutex_release(dev);
 	return 0;
